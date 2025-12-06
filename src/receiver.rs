@@ -1,30 +1,33 @@
+use crate::model::command::Command;
 use std::net::{SocketAddr, UdpSocket};
 use std::sync::mpsc;
 use std::thread;
 use std::thread::JoinHandle;
-use crate::model::stock_quote::StockQuote;
 
 pub struct QuoteReceiver {
-    socket: UdpSocket
+    socket: UdpSocket,
 }
 
 pub trait Receiver: Send + Sync {
     fn start_with_channel(
         self: Box<Self>,
-    ) -> (
-        thread::JoinHandle<()>,
-        mpsc::Receiver<(StockQuote, SocketAddr)>,
-    );
-    fn receive_loop_with_channel(
-        self: Box<Self>,
-        tx: mpsc::Sender<(StockQuote, SocketAddr)>,
-    ) -> Result<(), Box<dyn std::error::Error>>;
+    ) -> (JoinHandle<()>, mpsc::Receiver<(Command, SocketAddr)>);
 }
 
 impl Receiver for QuoteReceiver {
     fn start_with_channel(
-        self,
-    ) -> (JoinHandle<()>, mpsc::Receiver<(StockQuote, SocketAddr)>) {
+        self: Box<Self>,
+    ) -> (JoinHandle<()>, mpsc::Receiver<(Command, SocketAddr)>) {
+        QuoteReceiver::start_with_channel(*self)
+    }
+}
+impl QuoteReceiver {
+    pub fn new(bind_addr: &str) -> Result<Self, std::io::Error> {
+        let socket = UdpSocket::bind(bind_addr)?;
+        println!("Ресивер запущен на {}", bind_addr);
+        Ok(Self { socket })
+    }
+    pub fn start_with_channel(self) -> (JoinHandle<()>, mpsc::Receiver<(Command, SocketAddr)>) {
         let (tx, rx) = mpsc::channel();
 
         let handle = thread::spawn(move || {
@@ -34,10 +37,9 @@ impl Receiver for QuoteReceiver {
         });
         (handle, rx)
     }
-
     fn receive_loop_with_channel(
         self,
-        tx: mpsc::Sender<(StockQuote, std::net::SocketAddr)>,
+        tx: mpsc::Sender<(Command, SocketAddr)>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut buf = [0u8; 1024];
 
@@ -46,10 +48,13 @@ impl Receiver for QuoteReceiver {
         loop {
             match self.socket.recv_from(&mut buf) {
                 Ok((size, src_addr)) => {
-                    match bincode::decode_from_slice::<StockQuote, _>(&buf[..size], bincode::config::standard()) {
-                        Ok(metrics) => {
+                    match bincode::decode_from_slice::<Command, _>(
+                        &buf[..size],
+                        bincode::config::standard(),
+                    ) {
+                        Ok(quotes) => {
                             // Отправляем данные в основной поток
-                            if tx.send((metrics.0, src_addr)).is_err() {
+                            if tx.send((quotes.0, src_addr)).is_err() {
                                 println!("Канал закрыт, завершение потока приёма");
                                 break;
                             }

@@ -1,4 +1,7 @@
-#[derive(Debug, Clone)]
+use bincode::{Decode, Encode};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Decode, Encode, Serialize, Deserialize)]
 pub enum Ticker {
     AAPL,
     MSFT,

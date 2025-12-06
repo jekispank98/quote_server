@@ -1,6 +1,6 @@
+use crate::error::ParserError;
 use bincode::{Decode, Encode};
 use chrono::Utc;
-use crate::error::ParserError;
 use rand::Rng;
 
 #[derive(Debug, Clone, Encode, Decode)]
@@ -16,18 +16,22 @@ impl StockQuote {
         let mut rng = rand::rng();
         let new_quote: StockQuote = StockQuote {
             ticker: String::from(ticker),
-            price: rng.random_range(0f64 .. f64::MAX),
-            volume: 100 +(rand::random::<f64>() * 1000.0) as u32,
-            timestamp: Utc::now().timestamp_millis() as u64
+            price: rng.random_range(0f64..f64::MAX),
+            volume: 100 + (rand::random::<f64>() * 1000.0) as u32,
+            timestamp: Utc::now().timestamp_millis() as u64,
         };
         Ok(new_quote)
     }
 
     pub fn to_string(&self) -> String {
-        format!("{}|{}|{}|{}", self.ticker, self.price, self.volume, self.timestamp)
+        format!(
+            "{}|{}|{}|{}",
+            self.ticker, self.price, self.volume, self.timestamp
+        )
     }
 
     pub fn from_string(s: &str) -> Option<Self> {
+        println!("Parsing input {}", s);
         let parts: Vec<&str> = s.split('|').collect();
         if parts.len() == 4 {
             Some(StockQuote {
