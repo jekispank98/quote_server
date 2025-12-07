@@ -4,6 +4,7 @@ use crate::model::tickers::Ticker;
 
 #[derive(Debug, Clone, Decode, Encode, Serialize, Deserialize)]
 pub struct Command {
+    pub header: String,
     pub connection: String,
     pub address: String,
     pub port: String,

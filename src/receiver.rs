@@ -53,7 +53,6 @@ impl QuoteReceiver {
                         bincode::config::standard(),
                     ) {
                         Ok(quotes) => {
-                            // Отправляем данные в основной поток
                             if tx.send((quotes.0, src_addr)).is_err() {
                                 println!("Канал закрыт, завершение потока приёма");
                                 break;
