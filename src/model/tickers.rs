@@ -1,8 +1,8 @@
 use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
-use strum_macros::EnumString;
+use strum_macros::{Display, EnumString};
 
-#[derive(Debug, Clone, Decode, Encode, Serialize, Deserialize, EnumString)]
+#[derive(Debug, Clone, Decode, Encode, Serialize, Deserialize, EnumString, Display)]
 pub enum Ticker {
     AAPL,
     MSFT,
