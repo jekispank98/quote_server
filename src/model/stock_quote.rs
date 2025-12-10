@@ -2,6 +2,7 @@ use crate::error::ParserError;
 use bincode::{Decode, Encode};
 use chrono::Utc;
 use rand::Rng;
+use crate::model::tickers::Ticker;
 
 #[derive(Debug, Clone, Encode, Decode)]
 pub struct StockQuote {
@@ -12,14 +13,14 @@ pub struct StockQuote {
 }
 
 impl StockQuote {
-    pub fn generate_new(ticker: &str) -> Result<StockQuote, ParserError> {
+    pub fn generate_new(ticker: &Ticker) -> Result<StockQuote, ParserError> {
         let mut rng = rand::rng();
         let volume = match ticker {
-            "AAPL" | "MSFT" | "TSLA" => 1000 + (rand::random::<f64>() * 5000.0) as u32,
+            Ticker::AAPL | Ticker::MSFT| Ticker::TSLA => 1000 + (rand::random::<f64>() * 5000.0) as u32,
             _ => 100 + (rand::random::<f64>() * 1000.0) as u32,
         };
         let new_quote: StockQuote = StockQuote {
-            ticker: String::from(ticker),
+            ticker: ticker.to_string(),
             price: rng.random_range(0f64..f64::MAX),
             volume,
             timestamp: Utc::now().timestamp_millis() as u64,

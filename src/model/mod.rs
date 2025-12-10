@@ -1,4 +1,4 @@
 pub mod command;
 pub mod stock_quote;
-mod tickers;
-pub mod client_map;
+pub mod tickers;
+pub mod ping_monitor;
