@@ -1,6 +1,6 @@
 use crate::model::command::Command;
 use crate::model::ping_monitor::PingMonitor;
-use crossbeam_channel::Sender;
+use crossbeam_channel::{unbounded, Sender, Receiver};
 use std::net::{SocketAddr, UdpSocket};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
@@ -10,22 +10,6 @@ use std::time::Duration;
 pub struct QuoteReceiver {
     pub(crate) socket: UdpSocket,
     ping_monitor: Arc<Mutex<PingMonitor>>,
-}
-
-pub trait Receiver: Send + Sync {
-    fn start_with_channel(
-        self: Box<Self>,
-        stop_tx: Sender<SocketAddr>,
-    ) -> (JoinHandle<()>, mpsc::Receiver<(Command, SocketAddr)>);
-}
-
-impl Receiver for QuoteReceiver {
-    fn start_with_channel(
-        self: Box<Self>,
-        stop_tx: Sender<SocketAddr>,
-    ) -> (JoinHandle<()>, mpsc::Receiver<(Command, SocketAddr)>) {
-        QuoteReceiver::start_with_channel(*self, stop_tx)
-    }
 }
 impl QuoteReceiver {
     pub fn new(bind_addr: &str) -> Result<Self, std::io::Error> {
@@ -41,10 +25,10 @@ impl QuoteReceiver {
     pub fn start_with_channel(
         self,
         stop_tx: Sender<SocketAddr>,
-    ) -> (JoinHandle<()>, mpsc::Receiver<(Command, SocketAddr)>) {
-        let (tx, rx) = mpsc::channel();
+    ) -> (JoinHandle<()>, Receiver<(Command, SocketAddr)>) {
+        let (tx, rx) = unbounded();
         let ping_monitor = self.ping_monitor.clone();
-        let monitor_handle = Self::start_ping_monitor(ping_monitor.clone(), stop_tx);
+        Self::start_ping_monitor(ping_monitor.clone(), stop_tx);
         let handle = thread::spawn(move || {
             if let Err(e) = self.receive_loop_with_channel(tx, ping_monitor) {
                 eprintln!("Ошибка в receive_loop_with_channel: {}", e);
@@ -80,7 +64,7 @@ impl QuoteReceiver {
 
     fn receive_loop_with_channel(
         self,
-        tx: mpsc::Sender<(Command, SocketAddr)>,
+        tx: Sender<(Command, SocketAddr)>,
         ping_monitor: Arc<Mutex<PingMonitor>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut buf = [0u8; 1024];
@@ -99,13 +83,19 @@ impl QuoteReceiver {
                                 monitor.update_ping(src_addr);
                                 println!("Ping получен от {}", src_addr);
                             }
+                            "J_QUOTE" => {
+
+                                println!("J_QUOTE");
+                                let mut monitor = ping_monitor.lock().unwrap();
+                                monitor.update_ping(src_addr);
+                            }
                             _ => {
                                 let is_active = {
                                     let monitor = ping_monitor.lock().unwrap();
                                     monitor.is_client_active(&src_addr)
                                 };
 
-                                if is_active {
+                                 if is_active {
                                     if tx.send((command, src_addr)).is_err() {
                                         println!("Канал закрыт, завершение потока приёма");
                                         break;

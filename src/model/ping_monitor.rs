@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 use std::net::{SocketAddr, UdpSocket};
-// pub type ClientMap = Arc<RwLock<HashMap<SocketAddr, Instant>>>;
 
 pub struct QuoteReceiver {
     socket: UdpSocket,
