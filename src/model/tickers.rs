@@ -1,8 +1,32 @@
+//! Ticker symbols used throughout the server.
+//!
+//! The `Ticker` enum enumerates a set of well-known equities used by the quote generator
+//! and filtering logic. It derives multiple traits to support:
+//! - Binary encoding/decoding via `bincode` (`Encode`/`Decode`)
+//! - JSON serialization via `serde` (`Serialize`/`Deserialize`)
+//! - String conversion and parsing via `strum` (`Display`/`EnumString`)
+//!
+//! Parsing from string is case-sensitive by default (`EnumString`); callers should
+//! normalize input as needed before parsing user-provided symbols.
+
 use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString};
 
-#[derive(Debug, Clone, Decode, Encode, Serialize, Deserialize, EnumString, Display)]
+/// Enumerates supported ticker symbols.
+#[derive(
+    Debug,
+    Clone,
+    Decode,
+    Encode,
+    Serialize,
+    Deserialize,
+    EnumString,
+    Display,
+    Hash,
+    Eq,
+    PartialEq
+)]
 pub enum Ticker {
     AAPL,
     MSFT,

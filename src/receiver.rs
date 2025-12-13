@@ -1,18 +1,19 @@
 use crate::model::command::Command;
 use crate::model::ping_monitor::PingMonitor;
-use crossbeam_channel::{unbounded, Sender, Receiver};
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use std::net::{SocketAddr, UdpSocket};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
+use crate::error::ParserError;
 
 pub struct QuoteReceiver {
     pub(crate) socket: UdpSocket,
     ping_monitor: Arc<Mutex<PingMonitor>>,
 }
 impl QuoteReceiver {
-    pub fn new(bind_addr: &str) -> Result<Self, std::io::Error> {
+    pub fn new(bind_addr: &str) -> Result<Self, ParserError> {
         let socket = UdpSocket::bind(bind_addr)?;
         let ping_monitor = Arc::new(Mutex::new(PingMonitor::new(5)));
         println!("Ресивер запущен на {}", bind_addr);
@@ -84,10 +85,15 @@ impl QuoteReceiver {
                                 println!("Ping получен от {}", src_addr);
                             }
                             "J_QUOTE" => {
-
-                                println!("J_QUOTE");
+                                // Обновляем пинг, так как команда пришла от активного клиента
                                 let mut monitor = ping_monitor.lock().unwrap();
                                 monitor.update_ping(src_addr);
+
+                                // ❗ ГЛАВНОЕ ИЗМЕНЕНИЕ: Отправляем команду в main для запуска стриминга
+                                if tx.send((command, src_addr)).is_err() {
+                                    println!("Канал команд main закрыт, завершение потока приёма.");
+                                    break;
+                                }
                             }
                             _ => {
                                 let is_active = {
