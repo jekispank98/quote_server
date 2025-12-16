@@ -36,12 +36,17 @@ use crossbeam_channel::{select, unbounded, Receiver, Sender};
 use result::Result;
 use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
+use std::sync::{Arc, Mutex};
 use std::thread;
+use crate::model::command::Command;
+use crate::model::ping_monitor::PingMonitor;
+use crate::udp_listener::UdpPingListener;
 
 mod error;
 mod model;
 mod receiver;
 mod result;
+mod udp_listener;
 
 /// Default UDP bind address for the quote server.
 const BIND_ADDRESS: &str = "0.0.0.0:8080";
@@ -56,125 +61,80 @@ const BIND_ADDRESS: &str = "0.0.0.0:8080";
 ///
 /// Errors are propagated as `ParserError` so the caller can log and recover per client.
 pub fn handle_client_stream(
-    socket: UdpSocket,
+    socket: Arc<UdpSocket>,
     target_addr: SocketAddr,
     tickers: Vec<Ticker>,
     data_rx: Receiver<QuoteEvent>,
     stop_rx: Receiver<()>,
 ) -> Result<(), ParserError> {
-    println!("▶️ Запущен поток стриминга для клиента: {}", target_addr);
-
     loop {
         select! {
-            recv(stop_rx) -> msg => match msg {
-                Ok(_) => {
-                    println!("Stream shutdown {} according the signal.", target_addr);
-                    break;
-                },
-                Err(e) => {
-                    return Err(ParserError::ChannelRecv(e.to_string()));
-                },
-            },
-
+            recv(stop_rx) -> _ => break,
             recv(data_rx) -> msg => match msg {
                 Ok(QuoteEvent::Quote(quote)) => {
-                    let is_interested = tickers.iter().any(|t| t.to_string() == quote.ticker);
-
-                    if is_interested {
+                    if tickers.iter().any(|t| t.to_string() == quote.ticker) {
                         let data = quote.to_bytes();
-                        if let Err(e) = socket.send_to(&data, target_addr) {
-                            return Err(ParserError::Format(format!("Sending error {}: {}. Stop stream", target_addr, e)))
-                        }
+                        let _ = socket.send_to(&data, target_addr);
                     }
                 },
-                Ok(QuoteEvent::Shutdown) => {
-                    println!("Stop stream for {} according the quote_generator (Shutdown signal).", target_addr);
-                    break;
-                },
-                Err(e) => {
-                    return Err(ParserError::ChannelRecv(e.to_string()));
-                },
-            },
+                Ok(QuoteEvent::Shutdown) => break,
+                _ => break,
+            }
         }
     }
-    println!("Stream for {} is completed.", target_addr);
     Ok(())
 }
 
 fn main() -> Result<(), ParserError> {
-    println!("--- Start quotes up server ---");
+    // 1. Общий UDP сокет для работы с данными и пингами
+    let udp_socket = Arc::new(UdpSocket::bind("0.0.0.0:8081")?);
+
+    // 2. Мониторинг пингов (Пункт 5)
+    let ping_monitor = Arc::new(Mutex::new(PingMonitor::new(5)));
+    let (stop_tx, stop_rx) = unbounded::<SocketAddr>();
+
+    // Запускаем поток, который слушает пинги по UDP
+    UdpPingListener::start(Arc::clone(&udp_socket), Arc::clone(&ping_monitor));
+
+    // Запускаем поток, который проверяет таймауты
+    QuoteReceiver::start_ping_monitor(Arc::clone(&ping_monitor), stop_tx);
+
+    // 3. TCP Ресивер для команд (Пункт 2 и 3)
+    let (cmd_tx, cmd_rx) = unbounded::<(Command, SocketAddr)>();
+    let tcp_receiver = QuoteReceiver::new(BIND_ADDRESS)?; // Внутри TCP socket
+    thread::spawn(move || {
+        tcp_receiver.receive_loop_with_channel(cmd_tx);
+    });
 
     let subscription_tx = QuoteGenerator::start();
-
-    let (stop_tx, stop_rx) = unbounded::<SocketAddr>();
-    let receiver = QuoteReceiver::new(BIND_ADDRESS)?;
-    let server_socket_clone = receiver.socket.try_clone()?;
-    let (_receiver_thread_handle, cmd_rx) = receiver.start_with_channel(stop_tx);
     let mut active_streams: HashMap<SocketAddr, Sender<()>> = HashMap::new();
-
-    println!(
-        "The server is running and waiting for events {}",
-        BIND_ADDRESS
-    );
 
     loop {
         select! {
-            recv(cmd_rx) -> msg => match msg {
-                Ok((cmd, src_addr)) => {
-                    match cmd.header.as_str() {
-                        "J_QUOTE" => {
-                            println!("Quote's request from {}", src_addr);
-                            if active_streams.contains_key(&src_addr) {
-                                println!("The client {} is active already", src_addr);
-                                continue;
-                            }
+            // Получена команда STREAM по TCP
+            recv(cmd_rx) -> msg => if let Ok((cmd, target_udp_addr)) = msg {
+                let (shutdown_tx, shutdown_rx) = unbounded::<()>();
+                active_streams.insert(target_udp_addr, shutdown_tx);
 
-                            let (shutdown_tx, shutdown_rx) = unbounded::<()>();
-                            active_streams.insert(src_addr, shutdown_tx);
+                let (client_data_tx, client_data_rx) = unbounded::<QuoteEvent>();
+                subscription_tx.send(client_data_tx).ok();
 
-                            let (client_data_tx, client_data_rx) = unbounded::<QuoteEvent>();
+                let socket_clone = Arc::clone(&udp_socket);
+                let tickers = cmd.tickers;
 
-                            if subscription_tx.send(client_data_tx).is_err() {
-                                eprintln!("Error registering client in the quote_generator. Termination.");
-                                active_streams.remove(&src_addr);
-                                continue;
-                            }
-
-                            let tickers = cmd.tickers.clone();
-                            let socket_clone_for_thread = server_socket_clone.try_clone()?;
-
-                            thread::spawn(move || {
-                                if let Err(e) = handle_client_stream(
-                                    socket_clone_for_thread,
-                                    src_addr,
-                                    tickers,
-                                    client_data_rx,
-                                    shutdown_rx
-                                ) {
-                                    eprintln!("Critical error for {}: {:?}", src_addr, e);
-                                }
-                            });
-                        },
-
-                        _ => println!("Unknown command from {}: {}", src_addr, cmd.header),
-                    }
-                },
-                Err(e) => {
-                    return Err(ParserError::ChannelRecv(e.to_string()));
-                },
+                // 4. Поток для клиента (Пункт 4 и 6)
+                thread::spawn(move || {
+                    handle_client_stream(socket_clone, target_udp_addr, tickers, client_data_rx, shutdown_rx)
+                });
             },
-            recv(stop_rx) -> msg => match msg {
-                Ok(timeout_addr) => {
-                    println!("Client time-out {}. Stop stream", timeout_addr);
-                    if let Some(shutdown_tx) = active_streams.remove(&timeout_addr) {
-                        let _ = shutdown_tx.send(());
-                        println!("Stream for {} is stopped by Keep-Alive.", timeout_addr);
-                    } else {
-                        println!("Client {} was not found in any active streams, but received a timeout.", timeout_addr);
-                    }
-                },
-                Err(e) => return Err(ParserError::ChannelRecv(e.to_string()))
-            },
+
+            // Остановка потока по таймауту пинга (Пункт 5)
+            recv(stop_rx) -> addr => if let Ok(target_addr) = addr {
+                if let Some(tx) = active_streams.remove(&target_addr) {
+                    let _ = tx.send(());
+                    println!("Стрим для {} закрыт: таймаут пинга", target_addr);
+                }
+            }
         }
     }
 }
