@@ -41,14 +41,12 @@ impl QuoteGenerator {
     /// generator will push every `QuoteEvent` to all registered channels. If a send fails,
     /// the corresponding subscriber is dropped from the list.
     pub fn start() -> Sender<Sender<QuoteEvent>> {
-        // Registration channel for new clients
         let (subscribe_tx, subscribe_rx) = crossbeam_channel::unbounded::<Sender<QuoteEvent>>();
 
         thread::spawn(move || {
             let mut clients: Vec<Sender<QuoteEvent>> = Vec::new();
             let tickers = vec![Ticker::AAPL, Ticker::MSFT, Ticker::TSLA, Ticker::GOOGL];
-
-            // Store last prices so the random-walk evolves over time per symbol.
+            
             let initial_price = 100.0;
             let mut current_prices: HashMap<Ticker, f64> =
                 tickers.iter().map(|t| (t.clone(), initial_price)).collect();
@@ -59,7 +57,6 @@ impl QuoteGenerator {
             );
 
             loop {
-                // Handle new subscriptions without blocking event generation.
                 while let Ok(new_client_tx) = subscribe_rx.try_recv() {
                     clients.push(new_client_tx);
                     println!(
@@ -67,8 +64,7 @@ impl QuoteGenerator {
                         clients.len()
                     );
                 }
-
-                // Produce one tick per symbol and broadcast to all clients.
+                
                 for ticker in &tickers {
                     let current_price = *current_prices.get(ticker).unwrap_or(&initial_price);
 
@@ -79,8 +75,7 @@ impl QuoteGenerator {
                         clients.retain(|client_tx| client_tx.send(event.clone()).is_ok());
                     }
                 }
-
-                // Simulate market cadence
+                
                 thread::sleep(Duration::from_millis(500));
             }
         });

@@ -25,38 +25,32 @@ pub struct Quote {
 }
 
 impl Quote {
-    /// Compute next price via a small random-walk step around `current_price`.
     pub fn next_price(current_price: f64) -> f64 {
         let mut rng = rand::rng();
-        let change: f64 = rng.random_range(-0.01..0.01);
+        let change: f64 = rng.gen_range(-0.01..0.01);
         let new_price = current_price * (1.0 + change);
         new_price.max(0.01)
     }
 
-    /// Generate a new `Quote` for `ticker`, using `current_price` as the base.
     pub fn generate_new(ticker: &Ticker, current_price: f64) -> Result<Quote, ParserError> {
         let mut rng = rand::rng();
         let volume = match ticker {
-            Ticker::AAPL | Ticker::MSFT | Ticker::TSLA => 1000 + rng.random_range(0..5000) as u32,
+            Ticker::AAPL | Ticker::MSFT | Ticker::TSLA => {
+                1000 + rng.random_range(0..5000) as u32
+            },
             _ => 100 + rng.random_range(0..1000) as u32,
         };
 
-        let new_quote: Quote = Quote {
+        Ok(Quote {
             ticker: ticker.to_string(),
             price: Self::next_price(current_price),
             volume,
             timestamp: Utc::now().timestamp_millis() as u64,
-        };
-        Ok(new_quote)
+        })
     }
-
-    /// Encode this quote into a `Vec<u8>` using `bincode` standard configuration.
     pub fn to_bytes(&self) -> Vec<u8> {
-        bincode::encode_to_vec(self, bincode::config::standard()).expect("Failed to encode quote")
+        bincode::encode_to_vec(self, bincode::config::standard())
+            .expect("Failed to encode quote")
     }
 
-    /// Decode a quote from raw bytes using `bincode` standard configuration.
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, bincode::error::DecodeError> {
-        bincode::decode_from_slice(bytes, bincode::config::standard()).map(|(quote, _)| quote)
-    }
 }
