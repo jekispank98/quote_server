@@ -77,14 +77,14 @@ impl QuoteReceiver {
 
                     match stream.read(&mut buf) {
                         Ok(size) => {
-                            let command_str = String::from_utf8_lossy(&buf[..size]);
-                            println!("Received command from {}: {}", client_tcp_addr, command_str);
 
-                            // Парсим текстовую команду
-                            if let Some(command) = parse_text_command(&command_str, client_tcp_addr) {
-                                // Отправляем UDP адрес для стриминга
-                                let target_udp_addr = command.get_udp_addr()?;
-                                tx.send((command, target_udp_addr))?;
+                            if let Ok(command) = bincode::decode_from_slice::<Command, _>(
+                                &buf[..size],
+                                bincode::config::standard(),
+                            ) {
+                                println!("Received command {:?}", command);
+                                let target_udp_addr = command.0.get_udp_addr()?;
+                                tx.send((command.0, target_udp_addr))?;
                             }
                         }
                         Err(e) => eprintln!("Ошибка чтения TCP: {}", e),
@@ -133,8 +133,6 @@ fn parse_text_command(cmd: &str, client_tcp_addr: SocketAddr) -> Option<Command>
                 connection: "UDP".to_string(),
                 address: client_tcp_addr.ip().to_string(),
                 port: client_tcp_addr.port().to_string(),
-                udp_address: udp_address.to_string(),
-                udp_port: udp_port.to_string(),
                 tickers,
             });
         }

@@ -21,20 +21,14 @@ pub struct Command {
     /// Client-reported port (string form).
     pub port: String,
     /// List of tickers the client is interested in receiving.
-    pub tickers: Vec<Ticker>,
-    /// UDP address for streaming data (клиент указывает, куда слать данные)
-    pub udp_address: String,
-    /// UDP port for streaming data
-    pub udp_port: String,
+    pub tickers: Vec<Ticker>
 }
 
 impl Command {
     /// Creates a new subscription (`J_QUOTE`) command.
     pub fn new(
         address: &str,      // TCP адрес клиента
-        port: &str,         // TCP порт клиента
-        udp_address: &str,  // UDP адрес для данных
-        udp_port: &str,     // UDP порт для данных
+        port: &str,     // UDP порт для данных
         tickers: Vec<Ticker>
     ) -> Self {
         Command {
@@ -42,8 +36,6 @@ impl Command {
             connection: String::from(CONNECTION),
             address: String::from(address),
             port: String::from(port),
-            udp_address: String::from(udp_address),
-            udp_port: String::from(udp_port),
             tickers
         }
     }
@@ -55,15 +47,13 @@ impl Command {
             connection: String::from(CONNECTION),
             address: String::from(address),
             port: String::from(port),
-            udp_address: String::new(),  // Для PING не нужен UDP адрес
-            udp_port: String::new(),     // Для PING не нужен UDP порт
-            tickers: Vec::new()
+            tickers: Vec::new(),
         }
     }
 
     /// Получить UDP адрес клиента в формате SocketAddr
     pub fn get_udp_addr(&self) -> Result<SocketAddr, std::net::AddrParseError> {
-        format!("{}:{}", self.udp_address, self.udp_port).parse()
+        format!("{}:{}", self.address, self.port).parse()
     }
 
     /// Получить TCP адрес клиента в формате SocketAddr
