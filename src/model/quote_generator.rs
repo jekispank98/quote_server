@@ -41,6 +41,7 @@ impl QuoteGenerator {
     /// generator will push every `QuoteEvent` to all registered channels. If a send fails,
     /// the corresponding subscriber is dropped from the list.
     pub fn start() -> Sender<Sender<QuoteEvent>> {
+        println!("quote generator start");
         let (subscribe_tx, subscribe_rx) = crossbeam_channel::unbounded::<Sender<QuoteEvent>>();
 
         thread::spawn(move || {

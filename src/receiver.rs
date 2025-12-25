@@ -1,3 +1,4 @@
+use std::ffi::c_ushort;
 use crate::error::ParserError;
 use crate::model::command::Command;
 use crate::model::ping_monitor::PingMonitor;
@@ -70,9 +71,11 @@ impl QuoteReceiver {
         println!("TCP сервер команд запущен на {}", self.socket.local_addr()?);
 
         for stream in self.socket.incoming() {
+            println!("stream: {:?}", &stream);
             match stream {
                 Ok(mut stream) => {
                     let client_tcp_addr = stream.peer_addr()?;
+                    println!("client_tcp_addr: {:?}", &client_tcp_addr);
                     let mut buf = [0u8; 1024];
 
                     match stream.read(&mut buf) {

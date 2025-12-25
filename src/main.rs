@@ -62,8 +62,6 @@ const BIND_ADDRESS: &str = "127.0.0.1:8080";
 /// - a send/receive error occurs.
 ///
 /// Errors are propagated as `ParserError` so the caller can log and recover per client.
-// main.rs - исправленная функция handle_client_stream
-// main.rs - исправленная функция handle_client_stream
 pub fn handle_client_stream(
     socket: Arc<UdpSocket>,
     target_addr: SocketAddr,
@@ -80,7 +78,6 @@ pub fn handle_client_stream(
                 Ok(QuoteEvent::Quote(quote)) => {
                     if tickers_str.contains(&quote.ticker) {
                         let data = quote.to_bytes();
-                        // Используем send_to для UDP
                         if let Err(e) = socket.send_to(&data, target_addr) {
                             eprintln!("Failed to send UDP packet to {}: {}", target_addr, e);
                             break;
